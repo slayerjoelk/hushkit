@@ -1,59 +1,52 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
+import { Stack } from "expo-router";
+import { useEffect } from "react";
+import { Platform } from "react-native";
+import Purchases from "react-native-purchases";
+import { AuthProvider, useAuth } from "../hooks/useAuth";
+import { posthog } from "../lib/posthog";
+import { usePushNotifications } from "../hooks/usePushNotifications";
+import { useDeepLink } from "../hooks/useDeepLink";
+import "../global.css";
 
-import { useColorScheme } from '@/components/useColorScheme';
-
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
-
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
-};
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
-
-export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...FontAwesome.font,
-  });
-
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+function AppProviders({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const { processLink } = useDeepLink();
+  usePushNotifications();
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    Purchases.configure({
+      apiKey: Platform.OS === "ios"
+        ? process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY || ""
+        : process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY || "",
+    });
+  }, []);
+
+  useEffect(() => {
+    if (user?.id) {
+      posthog.identify(user.id, { email: user.email });
+    } else {
+      posthog.reset();
     }
-  }, [loaded]);
+  }, [user]);
 
-  if (!loaded) {
-    return null;
-  }
+  useEffect(() => {
+    processLink();
+  }, [processLink]);
 
-  return <RootLayoutNav />;
+  return <>{children}</>;
 }
 
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-
+export default function RootLayout() {
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
+    <AuthProvider>
+      <AppProviders>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0B0F19" } }}>
+          <Stack.Screen name="index" options={{ title: "HushKit" }} />
+          <Stack.Screen name="auth" options={{ title: "Sign In" }} />
+          <Stack.Screen name="settings" options={{ title: "Settings" }} />
+          <Stack.Screen name="paywall" options={{ title: "Premium", presentation: "modal" }} />
+        </Stack>
+      </AppProviders>
+    </AuthProvider>
   );
 }
